@@ -37,8 +37,8 @@ class ClaudeCLIExecutor {
             
             try {
                 // Escape path for shell
-                const escapedPath = customPath.replace(/'/g, "'\\'\''");
-                const testCommand = `'${escapedPath}' --version`;
+                const escapedPath = customPath;
+                const testCommand = `"${escapedPath}" --version`;
                 if (this.debugMode) {
                     outputChannel.appendLine(`[CUSTOM PATH] Test command: ${testCommand}`);
                 }
@@ -279,32 +279,20 @@ class ClaudeCLIExecutor {
             outputChannel.appendLine(`[EXECUTE] Using path: ${this.claudePath}`);
         }
 
-        // Use base64 encoding to completely avoid shell escaping issues
-        const base64Prompt = Buffer.from(prompt, 'utf8').toString('base64');
-        
-        // Build command that decodes base64 and pipes to claude
-        let command = `echo "${base64Prompt}" | base64 -d | ${this.claudePath}`;
-        
-        // Add all flags
-        command += ' --print';  // Use explicit --print flag
-        command += ' --model sonnet';  // Hardcoded model
-        command += ' --output-format json';
-        command += ' --dangerously-skip-permissions';  // Skip permissions check
-
-        if (this.debugMode) {
-            outputChannel.appendLine(`\n[EXECUTE] Command structure: echo [base64] | base64 -d | claude [options]`);
-            outputChannel.appendLine(`[EXECUTE] Base64 length: ${base64Prompt.length} chars`);
-            outputChannel.appendLine(`[EXECUTE] Original prompt length: ${prompt.length} chars`);
-        }
-        
         try {
+            // Write prompt to temp file to avoid command length limits on Windows
+            const os = require('os');
+            const fs = require('fs');
+            const tempFile = require('path').join(os.tmpdir(), 'claude-commit-prompt.txt');
+            fs.writeFileSync(tempFile, prompt, 'utf8');
+            const command = `type "${tempFile}" | "${this.claudePath}" --print --model sonnet --output-format json --dangerously-skip-permissions`;
             if (this.debugMode) {
                 outputChannel.appendLine('[EXECUTE] Starting execution...');
             }
             
             const execOptions = {
                 timeout: 60000,  // 60 seconds timeout
-                shell: '/bin/bash',
+                shell: true,
                 maxBuffer: 1024 * 1024 * 10, // 10MB buffer for large outputs
                 env: { 
                     ...process.env, 
